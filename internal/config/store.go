@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -51,7 +52,10 @@ func loadStore() (*Store, error) {
 }
 
 func loadConfig() (Config, bool, error) {
-	rawCfg := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON"))
+	rawCfg, envSource, envReadErr := readEnvConfig()
+	if envReadErr != nil {
+		return Config{}, true, envReadErr
+	}
 	path := ConfigPath()
 	if rawCfg != "" {
 		cfg, err := parseConfigString(rawCfg)
@@ -86,7 +90,7 @@ func loadConfig() (Config, bool, error) {
 				Logger.Warn("[config] env writeback bootstrap failed", "error", writeErr)
 			}
 		}
-		return cfg, true, err
+		return cfg, envSource, err
 	}
 	cfg, err := loadConfigFromFile(path)
 	if err != nil {
@@ -112,6 +116,28 @@ func loadConfig() (Config, bool, error) {
 		return cfg, true, nil
 	}
 	return cfg, false, nil
+}
+
+// readEnvConfig supports Docker/Compose Secret files without requiring
+// account passwords to be copied into a process command line or checked-in
+// environment file. DS2API_CONFIG_JSON remains supported for existing users.
+func readEnvConfig() (string, bool, error) {
+	if raw := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON")); raw != "" {
+		return raw, true, nil
+	}
+	secretPath := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON_FILE"))
+	if secretPath == "" {
+		return "", false, nil
+	}
+	content, err := os.ReadFile(secretPath)
+	if err != nil {
+		return "", true, fmt.Errorf("read DS2API_CONFIG_JSON_FILE: %w", err)
+	}
+	raw := strings.TrimSpace(string(content))
+	if raw == "" {
+		return "", true, errors.New("DS2API_CONFIG_JSON_FILE is empty")
+	}
+	return raw, true, nil
 }
 
 func shouldBootstrapMissingConfigFile(err error) bool {

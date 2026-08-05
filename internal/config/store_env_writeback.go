@@ -19,7 +19,8 @@ func (s *Store) IsEnvWritebackEnabled() bool {
 
 func (s *Store) HasEnvConfigSource() bool {
 	rawCfg := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON"))
-	return rawCfg != ""
+	secretPath := strings.TrimSpace(os.Getenv("DS2API_CONFIG_JSON_FILE"))
+	return rawCfg != "" || secretPath != ""
 }
 
 func (s *Store) ConfigPath() string {
