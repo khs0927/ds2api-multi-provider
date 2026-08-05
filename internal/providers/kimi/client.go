@@ -1,6 +1,7 @@
 package kimi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -29,6 +30,7 @@ type Response struct {
 	Raw    []byte
 	Chunks [][]byte
 	Stream bool
+	Body   io.ReadCloser
 }
 
 type Error struct {
@@ -37,6 +39,69 @@ type Error struct {
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// ReadStream consumes the response incrementally and invokes onFrame for each
+// SSE data event. The caller keeps control of the stream lifetime through this
+// method instead of receiving a fully buffered response from Chat.
+func (r *Response) ReadStream(onFrame func([]byte) error) (err error) {
+	if onFrame == nil {
+		return fmt.Errorf("K3 stream callback is nil")
+	}
+	if r.Body == nil {
+		for _, frame := range r.Chunks {
+			if err := onFrame(frame); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	defer func() {
+		closeErr := r.Body.Close()
+		if err == nil {
+			err = closeErr
+		}
+	}()
+
+	reader := bufio.NewReader(r.Body)
+	var dataLines []string
+	flush := func() error {
+		if len(dataLines) == 0 {
+			return nil
+		}
+		frame := []byte(strings.Join(dataLines, "\n"))
+		dataLines = nil
+		if bytes.Equal(frame, []byte("[DONE]")) {
+			return nil
+		}
+		r.Chunks = append(r.Chunks, append([]byte(nil), frame...))
+		return onFrame(frame)
+	}
+	for {
+		line, readErr := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(line, "data:") {
+			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		} else if line == "" {
+			if flushErr := flush(); flushErr != nil {
+				return flushErr
+			}
+		}
+		if readErr == io.EOF {
+			return flush()
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+}
+
+// Close releases a live stream without reading it to completion.
+func (r *Response) Close() error {
+	if r.Body == nil {
+		return nil
+	}
+	return r.Body.Close()
+}
 
 type Client struct {
 	BaseURL    string
@@ -49,7 +114,7 @@ func New(baseURL, apiKey string) *Client {
 }
 
 func (c *Client) Chat(ctx context.Context, req Request) (Response, error) {
-	if strings.TrimSpace(req.Model) != "kimi-k3" && strings.TrimSpace(req.Model) != "moonshotai/Kimi-K3" {
+	if req.Model != "kimi-k3" && req.Model != "moonshotai/Kimi-K3" {
 		return Response{}, fmt.Errorf("kimi provider only accepts kimi-k3 or moonshotai/Kimi-K3")
 	}
 	if len(req.Messages) == 0 {
@@ -104,18 +169,22 @@ func (c *Client) Chat(ctx context.Context, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, fmt.Errorf("K3 request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
+		return Response{}, &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("K3 API HTTP %d", resp.StatusCode)}
+	}
+	if req.Stream {
+		return Response{Stream: true, Body: resp.Body}, nil
+	}
 	raw, err := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
 	if err != nil {
 		return Response{}, fmt.Errorf("read K3 response: %w", err)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return Response{}, &Error{StatusCode: resp.StatusCode, Message: fmt.Sprintf("K3 API HTTP %d", resp.StatusCode)}
+	if closeErr != nil {
+		return Response{}, fmt.Errorf("close K3 response: %w", closeErr)
 	}
-	if !req.Stream {
-		return Response{Raw: raw}, nil
-	}
-	return Response{Raw: raw, Chunks: sseDataFrames(raw), Stream: true}, nil
+	return Response{Raw: raw}, nil
 }
 
 func sseDataFrames(raw []byte) [][]byte {

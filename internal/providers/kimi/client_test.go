@@ -3,6 +3,7 @@ package kimi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -57,11 +58,31 @@ func TestK3PreservesHistoryToolsAndProviderParameters(t *testing.T) {
 	}
 }
 
+func TestK3RejectsNonExactModelIDs(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	defer server.Close()
+	_, err := New(server.URL+"/v1", "test-key").Chat(context.Background(), Request{
+		Model:    " kimi-k3 ",
+		Messages: []json.RawMessage{json.RawMessage(`{"role":"user","content":"x"}`)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "only accepts") {
+		t.Fatalf("expected exact model rejection, got %v", err)
+	}
+	if called {
+		t.Fatal("non-exact model must not reach the upstream")
+	}
+}
+
 func TestK3StreamKeepsRawDataFrames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n")
-		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"c1\"}]}}]}\n\n")
+		io.WriteString(w, "event: delta\n")
+		io.WriteString(w, "data: {\"choices\":[\n")
+		io.WriteString(w, "data: {\"delta\":{\"tool_calls\":[{\"id\":\"c1\"}]}}\n\n")
 		io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
@@ -71,10 +92,44 @@ func TestK3StreamKeepsRawDataFrames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Stream || len(result.Chunks) != 2 {
-		t.Fatalf("stream frames = %#v", result.Chunks)
+	if !result.Stream || result.Body == nil {
+		t.Fatalf("expected live stream body, got %#v", result)
 	}
-	if !strings.Contains(string(result.Chunks[0]), "reasoning_content") || !strings.Contains(string(result.Chunks[1]), "tool_calls") {
-		t.Fatalf("stream fields lost: %#v", result.Chunks)
+	var frames [][]byte
+	if err := result.ReadStream(func(frame []byte) error {
+		frames = append(frames, append([]byte(nil), frame...))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(frames) != 2 {
+		t.Fatalf("stream frames = %#v", frames)
+	}
+	if !strings.Contains(string(frames[0]), "reasoning_content") || !strings.Contains(string(frames[1]), "tool_calls") {
+		t.Fatalf("stream fields lost: %#v", frames)
+	}
+	if !strings.Contains(string(frames[1]), "\n") {
+		t.Fatalf("multi-line SSE data was not preserved: %#v", frames[1])
+	}
+}
+
+func TestK3RedactsHTTPErrorBodies(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "password=DO_NOT_LEAK", http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	_, err := New(server.URL+"/v1", "test-key").Chat(context.Background(), Request{
+		Model:    "kimi-k3",
+		Messages: []json.RawMessage{json.RawMessage(`{"role":"user","content":"x"}`)},
+	})
+	if err == nil {
+		t.Fatal("expected HTTP error")
+	}
+	if !strings.Contains(err.Error(), "K3 API HTTP 401") || strings.Contains(err.Error(), "DO_NOT_LEAK") {
+		t.Fatalf("unsafe HTTP error: %v", err)
+	}
+	var providerErr *Error
+	if !errors.As(err, &providerErr) || providerErr.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected typed HTTP status error, got %T %v", err, err)
 	}
 }
