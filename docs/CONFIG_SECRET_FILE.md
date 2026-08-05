@@ -4,6 +4,10 @@ This fork supports `DS2API_CONFIG_JSON_FILE` in addition to the upstream
 `DS2API_CONFIG_JSON` variable. The file may contain the normal DS2API JSON
 configuration, including managed DeepSeek email/mobile accounts and passwords.
 
+The fork also supports `DS2API_ADMIN_KEY_FILE` and `DS2API_JWT_SECRET_FILE`.
+Direct environment variables take precedence for backwards compatibility; when
+they are blank, the service reads the corresponding root-only secret file.
+
 The service reads the file at startup, clears persisted runtime tokens from the
 in-memory bootstrap config, and treats the configuration as env-backed. Set
 `DS2API_ENV_WRITEBACK=0` for a read-only Docker Secret. The service does not
@@ -18,12 +22,16 @@ services:
     environment:
       DS2API_CONFIG_JSON_FILE: /run/secrets/ds2api_config
       DS2API_ENV_WRITEBACK: "0"
+      DS2API_ADMIN_KEY_FILE: /run/secrets/ds2api_admin_key
     secrets:
       - ds2api_config
+      - ds2api_admin_key
 
 secrets:
   ds2api_config:
     file: /root/minis-secrets/ds2api-config.json
+  ds2api_admin_key:
+    file: /root/minis-secrets/ds2api-admin-key
 ```
 
 Keep the host file outside Git with mode `0600`. Do not use this file as an
