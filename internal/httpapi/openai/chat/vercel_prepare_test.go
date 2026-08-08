@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,19 @@ func TestVercelInternalSecret(t *testing.T) {
 		t.Setenv("DS2API_ADMIN_KEY", "admin-fallback")
 		if got := vercelInternalSecret(); got != "admin-fallback" {
 			t.Fatalf("expected admin key fallback, got %q", got)
+		}
+	})
+
+	t.Run("fallback to admin key secret file", func(t *testing.T) {
+		path := t.TempDir() + "/admin-key"
+		if err := os.WriteFile(path, []byte("file-admin-fallback"), 0o600); err != nil {
+			t.Fatalf("write admin key secret: %v", err)
+		}
+		t.Setenv("DS2API_VERCEL_INTERNAL_SECRET", "")
+		t.Setenv("DS2API_ADMIN_KEY", "")
+		t.Setenv("DS2API_ADMIN_KEY_FILE", path)
+		if got := vercelInternalSecret(); got != "file-admin-fallback" {
+			t.Fatalf("expected admin key file fallback, got %q", got)
 		}
 	})
 

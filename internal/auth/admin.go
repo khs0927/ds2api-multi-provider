@@ -202,7 +202,7 @@ func UsingDefaultAdminKey(store AdminConfigReader) bool {
 	if store != nil && strings.TrimSpace(store.AdminPasswordHash()) != "" {
 		return false
 	}
-	return strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")) == ""
+	return secretEnv("DS2API_ADMIN_KEY") == ""
 }
 
 func HashAdminPassword(raw string) string {
