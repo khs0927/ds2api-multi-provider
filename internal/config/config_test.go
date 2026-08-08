@@ -32,6 +32,52 @@ func TestLoadStoreClearsTokensFromConfigInput(t *testing.T) {
 	}
 }
 
+func TestLoadStoreReadsConfigFromSecretFileWithoutWriteback(t *testing.T) {
+	secretPath := t.TempDir() + "/ds2api-config"
+	if err := os.WriteFile(secretPath, []byte(`{
+		"keys":["managed-key"],
+		"accounts":[{"email":"secret@example.com","password":"password-value","token":"runtime-token"}]
+	}`), 0o600); err != nil {
+		t.Fatalf("write secret file: %v", err)
+	}
+	configPath := t.TempDir() + "/config.json"
+	t.Setenv("DS2API_CONFIG_JSON", "")
+	t.Setenv("DS2API_CONFIG_JSON_FILE", secretPath)
+	t.Setenv("DS2API_CONFIG_PATH", configPath)
+	t.Setenv("DS2API_ENV_WRITEBACK", "0")
+
+	store, err := LoadStoreWithError()
+	if err != nil {
+		t.Fatalf("load secret-file config: %v", err)
+	}
+	if !store.IsEnvBacked() || !store.HasEnvConfigSource() {
+		t.Fatal("expected secret-file config to be env-backed")
+	}
+	accounts := store.Accounts()
+	if len(accounts) != 1 || accounts[0].Email != "secret@example.com" {
+		t.Fatalf("unexpected secret-file accounts: %#v", accounts)
+	}
+	if accounts[0].Token != "" {
+		t.Fatal("runtime token must be cleared from secret-file bootstrap")
+	}
+	if err := store.Save(); err != nil {
+		t.Fatalf("env-backed save should be a no-op: %v", err)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("secret-file bootstrap must not write config without explicit writeback, stat=%v", err)
+	}
+}
+
+func TestLoadStoreReportsMissingConfigSecretFileWithoutContents(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", "")
+	t.Setenv("DS2API_CONFIG_JSON_FILE", t.TempDir()+"/missing-secret")
+	if _, err := LoadStoreWithError(); err == nil {
+		t.Fatal("expected missing secret-file error")
+	} else if strings.Contains(err.Error(), "password") || strings.Contains(err.Error(), "token") {
+		t.Fatalf("secret material appeared in error: %v", err)
+	}
+}
+
 func TestLoadStorePreservesProxiesAndAccountProxyAssignment(t *testing.T) {
 	t.Setenv("DS2API_CONFIG_JSON", `{
 		"proxies":[

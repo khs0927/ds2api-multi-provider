@@ -35,7 +35,7 @@ func effectiveAdminKey(store AdminConfigReader) string {
 			return ""
 		}
 	}
-	if v := strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")); v != "" {
+	if v := secretEnv("DS2API_ADMIN_KEY"); v != "" {
 		return v
 	}
 	warnOnce.Do(func() {
@@ -45,7 +45,7 @@ func effectiveAdminKey(store AdminConfigReader) string {
 }
 
 func jwtSecret(store AdminConfigReader) string {
-	if v := strings.TrimSpace(os.Getenv("DS2API_JWT_SECRET")); v != "" {
+	if v := secretEnv("DS2API_JWT_SECRET"); v != "" {
 		return v
 	}
 	if store != nil {
@@ -54,6 +54,24 @@ func jwtSecret(store AdminConfigReader) string {
 		}
 	}
 	return effectiveAdminKey(store)
+}
+
+// secretEnv prefers the direct environment variable for backwards compatibility
+// and otherwise reads a root-only Docker/Kubernetes Secret file. Secret contents
+// and read errors are deliberately never returned to callers or logs.
+func secretEnv(name string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	path := strings.TrimSpace(os.Getenv(name + "_FILE"))
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func jwtExpireHours(store AdminConfigReader) int {
@@ -184,7 +202,7 @@ func UsingDefaultAdminKey(store AdminConfigReader) bool {
 	if store != nil && strings.TrimSpace(store.AdminPasswordHash()) != "" {
 		return false
 	}
-	return strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")) == ""
+	return secretEnv("DS2API_ADMIN_KEY") == ""
 }
 
 func HashAdminPassword(raw string) string {

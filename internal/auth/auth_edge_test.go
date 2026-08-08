@@ -4,11 +4,48 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"testing"
 
 	"ds2api/internal/account"
 	"ds2api/internal/config"
 )
+
+func TestAdminKeyReadsSecretFile(t *testing.T) {
+	path := t.TempDir() + "/admin-key"
+	if err := os.WriteFile(path, []byte("file-admin-key\n"), 0o600); err != nil {
+		t.Fatalf("write admin key secret: %v", err)
+	}
+	t.Setenv("DS2API_ADMIN_KEY", "")
+	t.Setenv("DS2API_ADMIN_KEY_FILE", path)
+	if got := AdminKey(); got != "file-admin-key" {
+		t.Fatalf("expected admin key from secret file, got %q", got)
+	}
+}
+
+func TestDirectAdminKeyTakesPrecedenceOverSecretFile(t *testing.T) {
+	path := t.TempDir() + "/admin-key"
+	if err := os.WriteFile(path, []byte("file-admin-key"), 0o600); err != nil {
+		t.Fatalf("write admin key secret: %v", err)
+	}
+	t.Setenv("DS2API_ADMIN_KEY", "direct-admin-key")
+	t.Setenv("DS2API_ADMIN_KEY_FILE", path)
+	if got := AdminKey(); got != "direct-admin-key" {
+		t.Fatalf("expected direct admin key precedence, got %q", got)
+	}
+}
+
+func TestUsingDefaultAdminKeyRecognizesSecretFile(t *testing.T) {
+	path := t.TempDir() + "/admin-key"
+	if err := os.WriteFile(path, []byte("file-admin-key"), 0o600); err != nil {
+		t.Fatalf("write admin key secret: %v", err)
+	}
+	t.Setenv("DS2API_ADMIN_KEY", "")
+	t.Setenv("DS2API_ADMIN_KEY_FILE", path)
+	if UsingDefaultAdminKey(nil) {
+		t.Fatal("expected a configured admin secret file not to use the default key")
+	}
+}
 
 // ─── extractCallerToken edge cases ───────────────────────────────────
 

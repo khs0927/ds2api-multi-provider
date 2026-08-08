@@ -299,10 +299,7 @@ func vercelInternalSecret() string {
 	if v := strings.TrimSpace(os.Getenv("DS2API_VERCEL_INTERNAL_SECRET")); v != "" {
 		return v
 	}
-	if v := strings.TrimSpace(os.Getenv("DS2API_ADMIN_KEY")); v != "" {
-		return v
-	}
-	return "admin"
+	return auth.AdminKey()
 }
 
 func (h *Handler) holdStreamLease(a *auth.RequestAuth, stdReq promptcompat.StandardRequest, sessionID string) string {
