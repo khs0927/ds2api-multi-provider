@@ -23,18 +23,27 @@ services:
       DS2API_CONFIG_JSON_FILE: /run/secrets/ds2api_config
       DS2API_ENV_WRITEBACK: "0"
       DS2API_ADMIN_KEY_FILE: /run/secrets/ds2api_admin_key
+      DS2API_JWT_SECRET_FILE: /run/secrets/ds2api_jwt_secret
     secrets:
       - ds2api_config
       - ds2api_admin_key
+      - ds2api_jwt_secret
 
 secrets:
   ds2api_config:
     file: /root/minis-secrets/ds2api-config.json
   ds2api_admin_key:
     file: /root/minis-secrets/ds2api-admin-key
+  ds2api_jwt_secret:
+    file: /root/minis-secrets/ds2api-jwt-secret
 ```
 
 Keep the host file outside Git with mode `0600`. Do not use this file as an
 admin export endpoint, and do not enable writeback against the mounted secret.
 The DS2API account/session manager still owns login and token refresh; this
 feature only changes how its initial configuration is injected.
+
+When the gateway uses `DS2API_API_KEY_FILE`, its value must match one of the
+managed keys in the configuration JSON's `keys` array. Otherwise DS2API treats
+the bearer value as a direct upstream token instead of selecting a managed
+account.
