@@ -44,6 +44,11 @@ func LoadStoreWithError() (*Store, error) {
 
 func loadStore() (*Store, error) {
 	cfg, fromEnv, err := loadConfig()
+	if accountErr := applyAccountEnv(&cfg); accountErr != nil {
+		err = errors.Join(err, accountErr)
+	} else if _, configured, _ := readAccountsEnv(); configured {
+		fromEnv = true
+	}
 	cfg.NormalizeCredentials()
 	if validateErr := ValidateConfig(cfg); validateErr != nil {
 		err = errors.Join(err, validateErr)
