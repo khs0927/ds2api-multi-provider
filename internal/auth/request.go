@@ -161,7 +161,7 @@ func (r *Resolver) loginAndPersist(ctx context.Context, a *RequestAuth) error {
 }
 
 func (r *Resolver) RefreshToken(ctx context.Context, a *RequestAuth) bool {
-	if !a.UseConfigToken || a.AccountID == "" {
+	if !a.UseConfigToken || a.AccountID == "" || a.Account.IsBrowserSession() {
 		return false
 	}
 	_ = r.Store.UpdateAccountToken(a.AccountID, "")
@@ -174,7 +174,7 @@ func (r *Resolver) RefreshToken(ctx context.Context, a *RequestAuth) bool {
 }
 
 func (r *Resolver) MarkTokenInvalid(a *RequestAuth) {
-	if !a.UseConfigToken || a.AccountID == "" {
+	if !a.UseConfigToken || a.AccountID == "" || a.Account.IsBrowserSession() {
 		return
 	}
 	a.Account.Token = ""
@@ -260,6 +260,10 @@ func callerTokenID(token string) string {
 }
 
 func (r *Resolver) ensureManagedToken(ctx context.Context, a *RequestAuth) error {
+	if a.Account.IsBrowserSession() {
+		a.DeepSeekToken = ""
+		return nil
+	}
 	if strings.TrimSpace(a.Account.Token) == "" {
 		return r.loginAndPersist(ctx, a)
 	}
