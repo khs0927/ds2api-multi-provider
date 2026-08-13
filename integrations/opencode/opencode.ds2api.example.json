@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ds2api/deepseek-v4-pro-0813",
+  "small_model": "ds2api/deepseek-v4-flash",
+  "provider": {
+    "ds2api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "DS2API (DeepSeek Web)",
+      "options": {
+        "baseURL": "{env:DS2API_OPENAI_BASE_URL}",
+        "apiKey": "{env:DS2API_API_KEY}",
+        "timeout": 600000
+      },
+      "models": {
+        "deepseek-v4-pro-0813": {
+          "name": "DeepSeek V4 Pro 0813 (DS2API Expert)"
+        },
+        "deepseek-v4-pro": {
+          "name": "DeepSeek V4 Pro (DS2API Expert)"
+        },
+        "deepseek-v4-pro-0813-search": {
+          "name": "DeepSeek V4 Pro 0813 Search (DS2API Expert + Search)"
+        },
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash (DS2API)"
+        }
+      }
+    }
+  }
+}
