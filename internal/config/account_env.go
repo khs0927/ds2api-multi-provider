@@ -27,6 +27,11 @@ func applyAccountEnv(c *Config) error {
 		return nil
 	}
 
+	// Once the secret-backed source is configured it is authoritative. Clear
+	// any file-backed accounts first so malformed secret input cannot silently
+	// fall back to credentials from a checked-in/local config.
+	c.Accounts = nil
+
 	var accounts []Account
 	if err := json.Unmarshal([]byte(raw), &accounts); err != nil {
 		return fmt.Errorf("invalid %s: %w", accountsJSONEnv, err)
