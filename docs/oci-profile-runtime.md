@@ -27,6 +27,34 @@ The profile adapter needs more than a stateless web function:
 
 Playwright publishes Linux ARM64 browser support and ARM64 Docker images, so Ampere A1 is compatible with the browser runtime architecture.
 
+## Reuse decision for the mobile login UI
+
+Do not build a custom VNC/noVNC desktop unless an existing image proves insufficient.
+
+Preferred reusable base: `linuxserver/webtop` on an Ubuntu/XFCE ARM64 image. Webtop exposes a full Linux desktop in a modern web browser and publishes ARM64 images. This lets a mobile user open the Webtop URL and interact with the normal headed browser started by the pinned `sums001/Deepseek-API` authentication command.
+
+A smaller alternative is `linuxserver/chromium`, which also publishes ARM64 images and exposes Chromium through a web UI. Prefer Webtop first because it provides a complete desktop and terminal for diagnosing an interactive Playwright login without inventing a separate remote-desktop stack.
+
+The intended login path is therefore:
+
+```text
+iPhone Safari
+    |
+    v
+Webtop HTTPS page
+    |
+    v
+headed Chromium / Playwright
+    |
+    v
+DeepSeek normal sign-in page
+    |
+    v
+user chooses Google and completes sign-in
+```
+
+The Google password is entered only in the browser shown by the user-driven login flow. DS2API itself does not add a Google-password field.
+
 ## Recommended topology
 
 ```text
@@ -35,18 +63,18 @@ Internet / mobile client
         v
    reverse proxy
         |
-        +---------------------+
-        |                     |
-        v                     v
-     DS2API             profile adapter
-     Go API              Playwright/Python
-        |                     |
-        | opaque profile_id   | user-driven sign-in
-        +-------------------->|
-                              |
-                              v
-                        persistent volume
-                        /data/profiles/<id>
+        +-------------------------+
+        |                         |
+        v                         v
+     DS2API                 Webtop / adapter
+     Go API                  Playwright/Python
+        |                         |
+        | opaque profile_id       | user-driven sign-in
+        +------------------------>|
+                                  |
+                                  v
+                            persistent volume
+                            /data/profiles/<id>
 ```
 
 The core account record remains provider-agnostic:
@@ -87,7 +115,9 @@ Integration work should adapt the minimum necessary profile selection layer inst
 - [ ] Use a sufficiently large boot/block volume while keeping total Always Free block storage within the OCI limit.
 - [ ] Install Docker and Compose (or Podman) on the VM.
 - [ ] Use an ARM64-compatible Playwright runtime.
-- [ ] Mount profile state under a persistent `/data` path.
+- [ ] Prefer an ARM64 `linuxserver/webtop` image for the mobile-accessible desktop instead of assembling VNC components from scratch.
+- [ ] Mount Webtop/application configuration and adapter profile state on persistent storage.
+- [ ] Put the Webtop UI behind HTTPS and authentication; do not expose an unauthenticated remote desktop to the internet.
 - [ ] Expose only the required public entrypoint; keep internal adapter/control ports private.
 - [ ] Create an OCI budget/alert at the minimum practical threshold even when only Always Free resources are intended.
 - [ ] Back up non-secret configuration separately from browser-profile state.
@@ -114,6 +144,7 @@ The optional adapter is ready only when all of the following pass:
 
 - [ ] `profile-1` and `profile-2` use isolated browser-profile directories.
 - [ ] A user can explicitly start sign-in for one profile without entering a Google password into DS2API.
+- [ ] The mobile login UI is served through an authenticated HTTPS endpoint.
 - [ ] The adapter reports only coarse states such as `pending`, `connected`, `reconnect_required`, and `error`.
 - [ ] No browser credential/session material appears in adapter API responses or logs.
 - [ ] Restarting the adapter reuses the persistent profile.
@@ -129,3 +160,5 @@ The optional adapter is ready only when all of the following pass:
 - Oracle public cloud regions: https://www.oracle.com/cloud/public-cloud-regions/
 - Playwright release notes: https://playwright.dev/docs/release-notes
 - Microsoft Playwright container registry: https://mcr.microsoft.com/artifact/mar/playwright
+- LinuxServer Webtop: https://docs.linuxserver.io/images/docker-webtop/
+- LinuxServer Chromium: https://docs.linuxserver.io/images/docker-chromium/
