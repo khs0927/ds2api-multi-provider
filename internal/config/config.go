@@ -27,15 +27,13 @@ type Config struct {
 }
 
 type Account struct {
-	Name      string `json:"name,omitempty"`
-	Remark    string `json:"remark,omitempty"`
-	Email     string `json:"email,omitempty"`
-	Mobile    string `json:"mobile,omitempty"`
-	Password  string `json:"password,omitempty"`
-	Token     string `json:"token,omitempty"`
-	ProxyID   string `json:"proxy_id,omitempty"`
-	AuthMode  string `json:"auth_mode,omitempty"`
-	BridgeURL string `json:"bridge_url,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Remark   string `json:"remark,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Mobile   string `json:"mobile,omitempty"`
+	Password string `json:"password,omitempty"`
+	Token    string `json:"token,omitempty"`
+	ProxyID  string `json:"proxy_id,omitempty"`
 }
 
 type APIKey struct {
@@ -100,15 +98,15 @@ func (c *Config) NormalizeCredentials() {
 	for i := range c.Accounts {
 		c.Accounts[i].Name = strings.TrimSpace(c.Accounts[i].Name)
 		c.Accounts[i].Remark = strings.TrimSpace(c.Accounts[i].Remark)
-		c.Accounts[i].AuthMode = strings.ToLower(strings.TrimSpace(c.Accounts[i].AuthMode))
-		c.Accounts[i].BridgeURL = NormalizeBridgeURL(c.Accounts[i].BridgeURL)
 	}
 
 	c.Vercel = NormalizeVercelConfig(c.Vercel)
 	c.normalizeModelAliases()
 }
 
-// DropInvalidAccounts removes accounts that cannot be addressed by admin APIs.
+// DropInvalidAccounts removes accounts that cannot be addressed by admin APIs
+// (no email and no normalizable mobile). This prevents legacy token-only
+// records from becoming orphaned empty entries after token stripping.
 func (c *Config) DropInvalidAccounts() {
 	if c == nil || len(c.Accounts) == 0 {
 		return
